@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "1077245727083",
+    "project_id": "today-plan-249cd",
+    "storage_bucket": "today-plan-249cd.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:1077245727083:android:70d4d91fc6d89bfe9fbc2e",
+        "android_client_info": {
+          "package_name": "com.example.today_plan"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyDe7xH7yohg-6JDGk2w6aNLdtpESYZsZv4"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

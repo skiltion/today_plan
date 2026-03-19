@@ -1,14 +1,14 @@
 import 'package:flutter/material.dart';
 import '../../data/models/plan_model.dart';
 
-class PlanCreatePage extends StatefulWidget {
-  const PlanCreatePage({super.key});
+class RecordCreatePage extends StatefulWidget {
+  const RecordCreatePage({super.key});
 
   @override
-  State<PlanCreatePage> createState() => _PlanCreatePageState();
+  State<RecordCreatePage> createState() => _RecordCreatePageState();
 }
 
-class _PlanCreatePageState extends State<PlanCreatePage> {
+class _RecordCreatePageState extends State<RecordCreatePage> {
   final TextEditingController _titleController = TextEditingController();
 
   TimeOfDay? _startTime;
@@ -31,7 +31,7 @@ class _PlanCreatePageState extends State<PlanCreatePage> {
     }
   }
 
-  void _savePlan() {
+  void _saveRecord() {
     if (_titleController.text.isEmpty ||
         _startTime == null ||
         _endTime == null) {
@@ -59,14 +59,16 @@ class _PlanCreatePageState extends State<PlanCreatePage> {
       _endTime!.minute,
     );
 
-    final newPlan = Plan(
+    final newRecord = Plan(
       id: DateTime.now().toString(),
       title: _titleController.text,
       startTime: startDateTime,
       endTime: endDateTime,
     );
 
-    Navigator.pop(context, newPlan); // 🔥 HomePage로 전달
+    print("저장된 기록: ${newRecord.title}");
+
+    Navigator.pop(context, newRecord);
   }
 
   String _formatTime(TimeOfDay? time) {
@@ -78,7 +80,7 @@ class _PlanCreatePageState extends State<PlanCreatePage> {
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
-        title: const Text("계획 추가"),
+        title: const Text("기록 추가"),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
@@ -123,7 +125,7 @@ class _PlanCreatePageState extends State<PlanCreatePage> {
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(
-                onPressed: _savePlan,
+                onPressed: _saveRecord,
                 child: const Text("저장"),
               ),
             ),
