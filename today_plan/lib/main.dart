@@ -1,10 +1,15 @@
 import 'package:flutter/material.dart';
-import 'features/home/home_page.dart';
 import 'package:firebase_core/firebase_core.dart';
+import 'firebase_options.dart';
+
+import 'features/auth/auth_wrapper.dart'; // 🔥 중요
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  await Firebase.initializeApp(); // 🔥 중요
+
+  await Firebase.initializeApp(
+    options: DefaultFirebaseOptions.currentPlatform,
+  );
 
   runApp(const MyApp());
 }
@@ -17,7 +22,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: '하루계획',
       debugShowCheckedModeBanner: false,
-      home: const HomePage(),
+      home: const AuthWrapper(), // 🔥 이거 필수
     );
   }
 }

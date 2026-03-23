@@ -1,142 +1,138 @@
 import 'package:flutter/material.dart';
 import '../../data/models/plan_model.dart';
-import '../../core/utils/time_utils.dart';
 
 class AnalysisPage extends StatelessWidget {
   final List<Plan> plans;
   final List<Plan> records;
 
+  final DateTime date;
+
   const AnalysisPage({
     super.key,
     required this.plans,
     required this.records,
+    required this.date,
   });
 
-  Duration _getTotalPlannedTime() {
-    return plans.fold(
-      Duration.zero,
-      (sum, plan) => sum + plan.endTime.difference(plan.startTime),
-    );
+  /// 🔥 시간 겹치는 부분 계산
+  Duration calculateOverlap(
+    DateTime start1,
+    DateTime end1,
+    DateTime start2,
+    DateTime end2,
+  ) {
+    final start = start1.isAfter(start2) ? start1 : start2;
+    final end = end1.isBefore(end2) ? end1 : end2;
+
+    if (start.isAfter(end)) return Duration.zero;
+    return end.difference(start);
   }
 
-  Duration _getTotalRecordTime() {
-    return records.fold(
-      Duration.zero,
-      (sum, record) => sum + record.endTime.difference(record.startTime),
-    );
-  }
+  /// 🔥 계획별 달성률 계산
+  Map<String, double> getAchievementByPlan() {
+    Map<String, Duration> planTotal = {};
+    Map<String, Duration> actualTotal = {};
 
-  Duration _getTotalOverlapTime() {
-    Duration total = Duration.zero;
-
+    // 계획 총 시간
     for (var plan in plans) {
-      for (var record in records) {
-        total += calculateOverlap(
+      final duration = plan.endTime.difference(plan.startTime);
+
+      planTotal[plan.title] =
+          (planTotal[plan.title] ?? Duration.zero) + duration;
+    }
+
+    // 실제 수행 시간 (겹치는 시간만)
+    for (var record in records) {
+      for (var plan in plans) {
+        if (plan.title != record.title) continue;
+
+        final overlap = calculateOverlap(
           plan.startTime,
           plan.endTime,
           record.startTime,
           record.endTime,
         );
+
+        actualTotal[plan.title] =
+            (actualTotal[plan.title] ?? Duration.zero) + overlap;
       }
     }
 
-    return total;
-  }
+    // 퍼센트 계산
+    Map<String, double> result = {};
 
-  double _getAchievementRate() {
-    final planned = _getTotalPlannedTime().inMinutes;
-    final overlap = _getTotalOverlapTime().inMinutes;
+    for (var title in planTotal.keys) {
+      final planTime = planTotal[title]!.inMinutes;
+      final actualTime = actualTotal[title]?.inMinutes ?? 0;
 
-    if (planned == 0) return 0;
+      double percent = (actualTime / planTime) * 100;
 
-    return (overlap / planned) * 100;
-  }
+      // 🔥 0~100% 제한 (원하면 제거 가능)
+      percent = percent.clamp(0, 100);
 
-  String _formatDuration(Duration d) {
-    final hours = d.inHours;
-    final minutes = d.inMinutes % 60;
-    return "$hours시간 $minutes분";
-  }
+      result[title] = percent;
+    }
 
-  Color _getColor(double rate) {
-    if (rate >= 80) return Colors.green;
-    if (rate >= 50) return Colors.blue;
-    return Colors.red;
+    return result;
   }
 
   @override
   Widget build(BuildContext context) {
-    final plannedTime = _getTotalPlannedTime();
-    final recordTime = _getTotalRecordTime();
-    final overlapTime = _getTotalOverlapTime();
-    final rate = _getAchievementRate();
+    final achievementMap = getAchievementByPlan();
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text("분석 결과"),
+        title: Text(
+          "${date.year}-${date.month}-${date.day} 분석 결과",
+        ),
       ),
       body: Padding(
         padding: const EdgeInsets.all(16),
-        child: Column(
-          children: [
-            const SizedBox(height: 20),
+        child: achievementMap.isEmpty
+            ? const Center(
+                child: Text("데이터가 없습니다"),
+              )
+            : ListView(
+                children: achievementMap.entries.map((entry) {
+                  return Card(
+                    margin: const EdgeInsets.symmetric(vertical: 8),
+                    child: Padding(
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          /// 🔥 제목 + 퍼센트
+                          Row(
+                            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                            children: [
+                              Text(
+                                entry.key,
+                                style: const TextStyle(
+                                  fontSize: 18,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                              Text(
+                                "${entry.value.toStringAsFixed(1)}%",
+                                style: const TextStyle(fontSize: 16),
+                              ),
+                            ],
+                          ),
 
-            // 🔥 달성률
-            Text(
-              "${rate.toStringAsFixed(1)}%",
-              style: TextStyle(
-                fontSize: 48,
-                fontWeight: FontWeight.bold,
-                color: _getColor(rate),
+                          const SizedBox(height: 10),
+
+                          /// 🔥 ProgressBar
+                          LinearProgressIndicator(
+                            value: entry.value / 100,
+                            minHeight: 8,
+                          ),
+                        ],
+                      ),
+                    ),
+                  );
+                }).toList(),
               ),
-            ),
-
-            const Text("달성률"),
-
-            const SizedBox(height: 30),
-
-            Divider(),
-
-            const SizedBox(height: 10),
-
-            // 📊 상세 정보
-            _buildRow("계획 시간", _formatDuration(plannedTime)),
-            _buildRow("실제 시간", _formatDuration(recordTime)),
-            _buildRow("겹친 시간", _formatDuration(overlapTime)),
-
-            const SizedBox(height: 30),
-
-            Divider(),
-
-            const SizedBox(height: 20),
-
-            // 💡 피드백
-            Text(
-              _getFeedback(rate),
-              style: const TextStyle(fontSize: 16),
-            ),
-          ],
-        ),
       ),
     );
-  }
-
-  Widget _buildRow(String title, String value) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 6),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.spaceBetween,
-        children: [
-          Text(title),
-          Text(value),
-        ],
-      ),
-    );
-  }
-
-  String _getFeedback(double rate) {
-    if (rate >= 80) return "🔥 계획을 매우 잘 지켰어요!";
-    if (rate >= 50) return "👍 나쁘지 않아요. 조금만 더!";
-    return "⚠️ 계획 대비 실천이 부족해요.";
   }
 }
