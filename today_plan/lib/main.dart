@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 
-import 'features/auth/auth_wrapper.dart'; // 🔥 중요
+import 'features/auth/auth_wrapper.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -22,7 +22,7 @@ class MyApp extends StatelessWidget {
     return MaterialApp(
       title: '하루계획',
       debugShowCheckedModeBanner: false,
-      home: const AuthWrapper(), // 🔥 이거 필수
+      home: const AuthWrapper(), // 🔥 핵심
     );
   }
 }

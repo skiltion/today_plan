@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
+
 import '../../data/models/plan_model.dart';
 import '../../data/services/firebase_service.dart';
 import '../plan/plan_create_page.dart';
@@ -41,6 +43,21 @@ class _HomePageState extends State<HomePage> {
     return Scaffold(
       appBar: AppBar(
         title: const Text("오늘 계획"),
+        actions: [
+          /// 🔥 로그아웃 버튼
+          IconButton(
+            icon: const Icon(Icons.logout),
+            onPressed: () async {
+              await FirebaseAuth.instance.signOut();
+
+              if (!mounted) return;
+
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text("로그아웃 되었습니다 👋")),
+              );
+            },
+          ),
+        ],
       ),
 
       /// 🔥 Drawer
@@ -52,9 +69,7 @@ class _HomePageState extends State<HomePage> {
             ),
             ListTile(
               title: const Text("홈"),
-              onTap: () {
-                Navigator.pop(context);
-              },
+              onTap: () => Navigator.pop(context),
             ),
             ListTile(
               title: const Text("기록 조회"),
@@ -71,135 +86,103 @@ class _HomePageState extends State<HomePage> {
         ),
       ),
 
-      body: RefreshIndicator(
-        onRefresh: _loadData,
-        child: ListView(
-          padding: const EdgeInsets.all(16),
-          children: [
-            /// 📌 계획
-            const Text(
-              "📌 오늘 계획",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
+      body: ListView(
+        padding: const EdgeInsets.all(16),
+        children: [
+          const Text("📌 오늘 계획"),
 
-            const SizedBox(height: 10),
-
-            ...plans.map((plan) => Card(
-                  child: ListTile(
-                    title: Text(plan.title),
-                    subtitle: Text(
-                        "${plan.startTime.hour}:${plan.startTime.minute} ~ ${plan.endTime.hour}:${plan.endTime.minute}"),
-
-                    /// 🔥 클릭 → 수정 페이지
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => EditPage(
-                            item: plan,
-                            onSave: (updated) async {
-                              await firebaseService.updatePlan(updated);
-                              _loadData();
-                            },
-                            onDelete: () async {
-                              await firebaseService.deletePlan(plan.id!);
-                              _loadData();
-                            },
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                )),
-
-            const SizedBox(height: 20),
-
-            ElevatedButton(
-              onPressed: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => const PlanCreatePage(),
-                  ),
-                );
-                _loadData();
-              },
-              child: const Text("계획 추가"),
-            ),
-
-            const Divider(height: 40),
-
-            /// 📝 기록
-            const Text(
-              "📝 오늘 기록",
-              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-            ),
-
-            const SizedBox(height: 10),
-
-            ...records.map((record) => Card(
-                  child: ListTile(
-                    title: Text(record.title),
-                    subtitle: Text(
-                        "${record.startTime.hour}:${record.startTime.minute} ~ ${record.endTime.hour}:${record.endTime.minute}"),
-
-                    /// 🔥 클릭 → 수정 페이지
-                    onTap: () {
-                      Navigator.push(
-                        context,
-                        MaterialPageRoute(
-                          builder: (_) => EditPage(
-                            item: record,
-                            onSave: (updated) async {
-                              await firebaseService.updateRecord(updated);
-                              _loadData();
-                            },
-                            onDelete: () async {
-                              await firebaseService.deleteRecord(record.id!);
-                              _loadData();
-                            },
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                )),
-
-            const SizedBox(height: 20),
-
-            ElevatedButton(
-              onPressed: () async {
-                await Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => RecordCreatePage(plans: plans),
-                  ),
-                );
-                _loadData();
-              },
-              child: const Text("기록 추가"),
-            ),
-
-            const SizedBox(height: 30),
-
-            /// 📊 분석 버튼
-            ElevatedButton(
-              onPressed: () {
-                Navigator.push(
-                  context,
-                  MaterialPageRoute(
-                    builder: (_) => AnalysisPage(
-                      plans: plans,
-                      records: records,
-                      date: DateTime.now(),
+          ...plans.map((plan) => ListTile(
+                title: Text(plan.title),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => EditPage(
+                        item: plan,
+                        onSave: (updated) async {
+                          await firebaseService.updatePlan(updated);
+                          _loadData();
+                        },
+                        onDelete: () async {
+                          await firebaseService.deletePlan(plan.id!);
+                          _loadData();
+                        },
+                      ),
                     ),
+                  );
+                },
+              )),
+
+          ElevatedButton(
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => const PlanCreatePage(),
+                ),
+              );
+              _loadData();
+            },
+            child: const Text("계획 추가"),
+          ),
+
+          const Divider(),
+
+          const Text("📝 오늘 기록"),
+
+          ...records.map((record) => ListTile(
+                title: Text(record.title),
+                onTap: () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => EditPage(
+                        item: record,
+                        onSave: (updated) async {
+                          await firebaseService.updateRecord(updated);
+                          _loadData();
+                        },
+                        onDelete: () async {
+                          await firebaseService.deleteRecord(record.id!);
+                          _loadData();
+                        },
+                      ),
+                    ),
+                  );
+                },
+              )),
+
+          ElevatedButton(
+            onPressed: () async {
+              await Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => RecordCreatePage(plans: plans),
+                ),
+              );
+              _loadData();
+            },
+            child: const Text("기록 추가"),
+          ),
+
+          const SizedBox(height: 20),
+
+          ElevatedButton(
+            onPressed: () {
+              Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => AnalysisPage(
+                    plans: plans,
+                    records: records,
+                    date: DateTime.now(),
                   ),
-                );
-              },
-              child: const Text("오늘 분석 보기"),
-            ),
-          ],
-        ),
+                ),
+              );
+            },
+            child: const Text("오늘 분석 보기"),
+          ),
+        ],
       ),
     );
   }

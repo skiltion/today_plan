@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import '../../data/services/auth_service.dart';
-import '../home/home_page.dart';
 import 'signup_page.dart';
 
 class LoginPage extends StatefulWidget {
@@ -16,14 +15,12 @@ class _LoginPageState extends State<LoginPage> {
   final _emailController = TextEditingController();
   final _passwordController = TextEditingController();
 
-  bool _isLoading = false; // 🔥 추가
+  bool _isLoading = false;
 
   void _login() async {
     if (_isLoading) return;
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() => _isLoading = true);
 
     try {
       final user = await _auth.signIn(
@@ -33,13 +30,8 @@ class _LoginPageState extends State<LoginPage> {
 
       if (user != null) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text("로그인 성공 🎉"),
-            duration: Duration(seconds: 1),
-          ),
+          const SnackBar(content: Text("로그인 성공 🎉")),
         );
-
-        await Future.delayed(const Duration(milliseconds: 800));
       }
     } catch (e) {
       if (!mounted) return;
@@ -49,12 +41,8 @@ class _LoginPageState extends State<LoginPage> {
       );
     }
 
-    // 🔥 핵심
     if (!mounted) return;
-
-    setState(() {
-      _isLoading = false;
-    });
+    setState(() => _isLoading = false);
   }
 
   @override
@@ -65,22 +53,31 @@ class _LoginPageState extends State<LoginPage> {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            TextField(controller: _emailController, decoration: const InputDecoration(labelText: "이메일")),
-            TextField(controller: _passwordController, decoration: const InputDecoration(labelText: "비밀번호"), obscureText: true),
+            TextField(
+              controller: _emailController,
+              decoration: const InputDecoration(labelText: "이메일"),
+            ),
+            TextField(
+              controller: _passwordController,
+              decoration: const InputDecoration(labelText: "비밀번호"),
+              obscureText: true,
+            ),
             const SizedBox(height: 20),
+
             ElevatedButton(
-              onPressed: _isLoading ? null : _login, // 🔥 비활성화
+              onPressed: _isLoading ? null : _login,
               child: _isLoading
-                  ? const SizedBox(
-                      width: 20,
-                      height: 20,
-                      child: CircularProgressIndicator(strokeWidth: 2),
-                    )
+                  ? const CircularProgressIndicator()
                   : const Text("로그인"),
             ),
+
             TextButton(
               onPressed: () {
-                Navigator.push(context, MaterialPageRoute(builder: (_) => const SignupPage()));
+                Navigator.push(
+                  context,
+                  MaterialPageRoute(
+                      builder: (_) => const SignupPage()),
+                );
               },
               child: const Text("회원가입"),
             ),
