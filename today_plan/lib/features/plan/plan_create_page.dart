@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../data/models/plan_model.dart';
+import '../../data/services/firebase_service.dart';
 
 class PlanCreatePage extends StatefulWidget {
   const PlanCreatePage({super.key});
@@ -10,6 +11,7 @@ class PlanCreatePage extends StatefulWidget {
 
 class _PlanCreatePageState extends State<PlanCreatePage> {
   final TextEditingController _titleController = TextEditingController();
+  final FirebaseService _firebaseService = FirebaseService();
 
   TimeOfDay? _startTime;
   TimeOfDay? _endTime;
@@ -31,7 +33,7 @@ class _PlanCreatePageState extends State<PlanCreatePage> {
     }
   }
 
-  void _savePlan() {
+  Future<void> _savePlan() async {
     if (_titleController.text.isEmpty ||
         _startTime == null ||
         _endTime == null) {
@@ -60,13 +62,27 @@ class _PlanCreatePageState extends State<PlanCreatePage> {
     );
 
     final newPlan = Plan(
-      id: DateTime.now().toString(),
+      id: '',
       title: _titleController.text,
       startTime: startDateTime,
       endTime: endDateTime,
     );
 
-    Navigator.pop(context, newPlan); // 🔥 HomePage로 전달
+    try {
+      await _firebaseService.addPlan(newPlan); // 🔥 핵심
+
+      if (!mounted) return;
+
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("계획 저장 완료")),
+      );
+
+      Navigator.pop(context); // 🔥 이제 그냥 닫기만
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("에러 발생: $e")),
+      );
+    }
   }
 
   String _formatTime(TimeOfDay? time) {
@@ -77,9 +93,7 @@ class _PlanCreatePageState extends State<PlanCreatePage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: const Text("계획 추가"),
-      ),
+      appBar: AppBar(title: const Text("계획 추가")),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
@@ -91,7 +105,6 @@ class _PlanCreatePageState extends State<PlanCreatePage> {
                 border: OutlineInputBorder(),
               ),
             ),
-
             const SizedBox(height: 20),
 
             Row(
@@ -104,8 +117,6 @@ class _PlanCreatePageState extends State<PlanCreatePage> {
                 ),
               ],
             ),
-
-            const SizedBox(height: 10),
 
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,

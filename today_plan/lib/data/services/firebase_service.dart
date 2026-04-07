@@ -13,6 +13,7 @@ class FirebaseService {
       'title': plan.title,
       'startTime': plan.startTime,
       'endTime': plan.endTime,
+      'date': DateTime.now().toIso8601String().substring(0, 10), // 🔥 추가
     });
   }
 

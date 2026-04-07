@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import 'package:fl_chart/fl_chart.dart';
 import '../../data/models/plan_model.dart';
 
 class AnalysisPage extends StatelessWidget {
@@ -14,181 +13,135 @@ class AnalysisPage extends StatelessWidget {
     required this.date,
   });
 
-  Duration calculateOverlap(
-    DateTime start1,
-    DateTime end1,
-    DateTime start2,
-    DateTime end2,
-  ) {
-    final start = start1.isAfter(start2) ? start1 : start2;
-    final end = end1.isBefore(end2) ? end1 : end2;
+  // 🔥 겹친 시간 계산 (분 단위)
+  int calculateOverlapMinutes(Plan p, Plan r) {
+    final start = p.startTime.isAfter(r.startTime)
+        ? p.startTime
+        : r.startTime;
 
-    if (start.isAfter(end)) return Duration.zero;
-    return end.difference(start);
+    final end =
+        p.endTime.isBefore(r.endTime) ? p.endTime : r.endTime;
+
+    if (end.isBefore(start)) return 0;
+
+    return end.difference(start).inMinutes;
   }
 
-  Map<String, double> getAchievementByPlan() {
-    Map<String, Duration> planTotal = {};
-    Map<String, Duration> actualTotal = {};
+  // 🔥 계획별 분석
+  Map<String, dynamic> analyzePlan(Plan plan) {
+    final relatedRecords =
+        records.where((r) => r.title == plan.title);
 
-    for (var plan in plans) {
-      final duration = plan.endTime.difference(plan.startTime);
-      planTotal[plan.title] =
-          (planTotal[plan.title] ?? Duration.zero) + duration;
+    int totalActual = 0;
+
+    for (var r in relatedRecords) {
+      totalActual += calculateOverlapMinutes(plan, r);
     }
 
-    for (var record in records) {
-      for (var plan in plans) {
-        if (plan.title != record.title) continue;
+    final planned =
+        plan.endTime.difference(plan.startTime).inMinutes;
 
-        final overlap = calculateOverlap(
-          plan.startTime,
-          plan.endTime,
-          record.startTime,
-          record.endTime,
-        );
+    double ratio = planned == 0 ? 0 : totalActual / planned;
 
-        actualTotal[plan.title] =
-            (actualTotal[plan.title] ?? Duration.zero) + overlap;
-      }
+    int diff = totalActual - planned; // + 초과 / - 부족
+
+    Color color;
+    if (ratio >= 0.8) {
+      color = Colors.green;
+    } else if (ratio >= 0.5) {
+      color = Colors.orange;
+    } else {
+      color = Colors.red;
     }
 
-    Map<String, double> result = {};
-
-    for (var title in planTotal.keys) {
-      final planTime = planTotal[title]!.inMinutes;
-      final actualTime = actualTotal[title]?.inMinutes ?? 0;
-
-      result[title] = ((actualTime / planTime) * 100).clamp(0, 100);
-    }
-
-    return result;
+    return {
+      "planned": planned,
+      "actual": totalActual,
+      "ratio": ratio,
+      "diff": diff,
+      "color": color,
+    };
   }
 
   @override
   Widget build(BuildContext context) {
-    final data = getAchievementByPlan();
-    final entries = data.entries.toList();
+    final totalPlans = plans.length;
 
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          "${date.year}.${date.month}.${date.day} 분석",
-        ),
+            "${date.year}-${date.month}-${date.day} 분석"),
       ),
-      body: Padding(
-        padding: const EdgeInsets.all(16),
-        child: entries.isEmpty
-            ? const Center(child: Text("데이터 없음"))
-            : Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  /// 🔥 그래프 카드
-                  Card(
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                    elevation: 4,
+      body: plans.isEmpty
+          ? const Center(child: Text("계획 없음"))
+          : ListView(
+              padding: const EdgeInsets.all(16),
+              children: [
+
+                ...plans.map((plan) {
+                  final result = analyzePlan(plan);
+
+                  final planned = result["planned"];
+                  final actual = result["actual"];
+                  final ratio = result["ratio"];
+                  final diff = result["diff"];
+                  final color = result["color"];
+
+                  return Card(
+                    margin: const EdgeInsets.only(bottom: 12),
                     child: Padding(
-                      padding: const EdgeInsets.all(16),
-                      child: SizedBox(
-                        height: 200,
-                        child: BarChart(
-                          BarChartData(
-                            borderData: FlBorderData(show: false),
-                            titlesData: FlTitlesData(
-                              leftTitles: AxisTitles(
-                                sideTitles: SideTitles(showTitles: true),
-                              ),
-                              bottomTitles: AxisTitles(
-                                sideTitles: SideTitles(
-                                  showTitles: true,
-                                  getTitlesWidget: (value, meta) {
-                                    if (value.toInt() >= entries.length) {
-                                      return const SizedBox();
-                                    }
-                                    return Text(
-                                      entries[value.toInt()].key,
-                                      style: const TextStyle(fontSize: 10),
-                                    );
-                                  },
-                                ),
-                              ),
-                            ),
-                            barGroups: List.generate(entries.length, (i) {
-                              return BarChartGroupData(
-                                x: i,
-                                barRods: [
-                                  BarChartRodData(
-                                    toY: entries[i].value,
-                                    width: 16,
-                                    borderRadius: BorderRadius.circular(4),
-                                  ),
-                                ],
-                              );
-                            }),
+                      padding: const EdgeInsets.all(12),
+                      child: Column(
+                        crossAxisAlignment:
+                            CrossAxisAlignment.start,
+                        children: [
+                          Text(
+                            plan.title,
+                            style: const TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.bold),
                           ),
-                        ),
+
+                          const SizedBox(height: 8),
+
+                          // 🔥 Progress Bar
+                          LinearProgressIndicator(
+                            value: ratio.clamp(0, 1),
+                            color: color,
+                            minHeight: 8,
+                          ),
+
+                          const SizedBox(height: 8),
+
+                          Text("계획: ${planned}분"),
+                          Text("실제: ${actual}분"),
+
+                          const SizedBox(height: 4),
+
+                          // 🔥 초과/부족 표시
+                          Text(
+                            diff >= 0
+                                ? "🔵 ${diff}분 초과"
+                                : "🔴 ${-diff}분 부족",
+                            style: TextStyle(
+                              color: diff >= 0
+                                  ? Colors.blue
+                                  : Colors.red,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+
+                          const SizedBox(height: 4),
+
+                          Text(
+                              "달성률: ${(ratio * 100).toStringAsFixed(1)}%"),
+                        ],
                       ),
                     ),
-                  ),
-
-                  const SizedBox(height: 20),
-
-                  /// 🔥 리스트 + ProgressBar
-                  Expanded(
-                    child: ListView(
-                      children: entries.map((e) {
-                        return Card(
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(16),
-                          ),
-                          elevation: 3,
-                          margin: const EdgeInsets.symmetric(vertical: 8),
-                          child: Padding(
-                            padding: const EdgeInsets.all(16),
-                            child: Column(
-                              crossAxisAlignment: CrossAxisAlignment.start,
-                              children: [
-                                /// 제목 + 퍼센트
-                                Row(
-                                  mainAxisAlignment:
-                                      MainAxisAlignment.spaceBetween,
-                                  children: [
-                                    Text(
-                                      e.key,
-                                      style: const TextStyle(
-                                        fontSize: 18,
-                                        fontWeight: FontWeight.bold,
-                                      ),
-                                    ),
-                                    Text(
-                                      "${e.value.toStringAsFixed(1)}%",
-                                      style: const TextStyle(fontSize: 16),
-                                    ),
-                                  ],
-                                ),
-
-                                const SizedBox(height: 10),
-
-                                /// ProgressBar
-                                ClipRRect(
-                                  borderRadius: BorderRadius.circular(10),
-                                  child: LinearProgressIndicator(
-                                    value: e.value / 100,
-                                    minHeight: 10,
-                                  ),
-                                ),
-                              ],
-                            ),
-                          ),
-                        );
-                      }).toList(),
-                    ),
-                  ),
-                ],
-              ),
-      ),
+                  );
+                }),
+              ],
+            ),
     );
   }
 }

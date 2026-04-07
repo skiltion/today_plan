@@ -1,23 +1,16 @@
 import 'package:flutter/material.dart';
 import '../../data/models/plan_model.dart';
 
-class EditPage extends StatefulWidget {
-  final Plan item;
-  final Function(Plan) onSave;
-  final Function() onDelete;
+class PlanEditPage extends StatefulWidget {
+  final Plan plan;
 
-  const EditPage({
-    super.key,
-    required this.item,
-    required this.onSave,
-    required this.onDelete,
-  });
+  const PlanEditPage({super.key, required this.plan});
 
   @override
-  State<EditPage> createState() => _EditPageState();
+  State<PlanEditPage> createState() => _PlanEditPageState();
 }
 
-class _EditPageState extends State<EditPage> {
+class _PlanEditPageState extends State<PlanEditPage> {
   late TextEditingController _titleController;
 
   TimeOfDay? _startTime;
@@ -27,16 +20,17 @@ class _EditPageState extends State<EditPage> {
   void initState() {
     super.initState();
 
-    _titleController = TextEditingController(text: widget.item.title);
+    _titleController =
+        TextEditingController(text: widget.plan.title);
 
-    _startTime = TimeOfDay.fromDateTime(widget.item.startTime);
-    _endTime = TimeOfDay.fromDateTime(widget.item.endTime);
+    _startTime = TimeOfDay.fromDateTime(widget.plan.startTime);
+    _endTime = TimeOfDay.fromDateTime(widget.plan.endTime);
   }
 
   Future<void> _pickTime(bool isStart) async {
     final picked = await showTimePicker(
       context: context,
-      initialTime: isStart ? _startTime! : _endTime!,
+      initialTime: _startTime ?? TimeOfDay.now(),
     );
 
     if (picked != null) {
@@ -54,7 +48,7 @@ class _EditPageState extends State<EditPage> {
     final now = DateTime.now();
 
     final updated = Plan(
-      id: widget.item.id,
+      id: widget.plan.id,
       title: _titleController.text,
       startTime: DateTime(
         now.year,
@@ -72,25 +66,23 @@ class _EditPageState extends State<EditPage> {
       ),
     );
 
-    widget.onSave(updated);
-    Navigator.pop(context);
+    Navigator.pop(context, updated);
+  }
+
+  void _delete() {
+    Navigator.pop(context, {"delete": true, "id": widget.plan.id});
   }
 
   @override
   Widget build(BuildContext context) {
-    String format(TimeOfDay t) =>
-        "${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}";
-
     return Scaffold(
-      appBar: AppBar(title: const Text("수정")),
+      appBar: AppBar(title: const Text("계획 수정")),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-            TextField(
-              controller: _titleController,
-              decoration: const InputDecoration(labelText: "제목"),
-            ),
+            TextField(controller: _titleController),
+
             const SizedBox(height: 20),
 
             Row(
@@ -99,7 +91,7 @@ class _EditPageState extends State<EditPage> {
                 const Text("시작"),
                 TextButton(
                   onPressed: () => _pickTime(true),
-                  child: Text(format(_startTime!)),
+                  child: Text(_startTime!.format(context)),
                 ),
               ],
             ),
@@ -110,26 +102,21 @@ class _EditPageState extends State<EditPage> {
                 const Text("종료"),
                 TextButton(
                   onPressed: () => _pickTime(false),
-                  child: Text(format(_endTime!)),
+                  child: Text(_endTime!.format(context)),
                 ),
               ],
             ),
 
-            const SizedBox(height: 30),
+            const SizedBox(height: 20),
 
-            ElevatedButton(
-              onPressed: _save,
-              child: const Text("수정 저장"),
-            ),
+            ElevatedButton(onPressed: _save, child: const Text("수정")),
 
             const SizedBox(height: 10),
 
             ElevatedButton(
-              style: ElevatedButton.styleFrom(backgroundColor: Colors.red),
-              onPressed: () {
-                widget.onDelete();
-                Navigator.pop(context);
-              },
+              onPressed: _delete,
+              style: ElevatedButton.styleFrom(
+                  backgroundColor: Colors.red),
               child: const Text("삭제"),
             ),
           ],

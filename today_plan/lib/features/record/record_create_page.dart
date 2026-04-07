@@ -1,12 +1,14 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../../data/models/plan_model.dart';
+import '../../data/services/firebase_service.dart';
 
 class RecordCreatePage extends StatefulWidget {
-  final List<Plan> plans; // 🔥 이거 추가
+  final List<Plan> plans;
 
   const RecordCreatePage({
     super.key,
-    required this.plans, // 🔥 필수
+    required this.plans,
   });
 
   @override
@@ -14,75 +16,120 @@ class RecordCreatePage extends StatefulWidget {
 }
 
 class _RecordCreatePageState extends State<RecordCreatePage> {
+  final FirebaseService _firebaseService = FirebaseService();
   final TextEditingController _titleController = TextEditingController();
 
   String? _selectedTitle;
   bool _useCustom = false;
 
-  TimeOfDay? _startTime;
-  TimeOfDay? _endTime;
+  Timer? _timer;
+  Duration _elapsed = Duration.zero;
+  DateTime? _currentStart;
 
-  Future<void> _pickTime(bool isStart) async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-    );
+  bool _isRunning = false;
 
-    if (picked != null) {
+  List<Map<String, DateTime>> _segments = [];
+
+  // ================== 타이머 ==================
+
+  void _start() {
+    _currentStart = DateTime.now();
+    _isRunning = true;
+
+    _timer = Timer.periodic(const Duration(seconds: 1), (_) {
       setState(() {
-        if (isStart) {
-          _startTime = picked;
-        } else {
-          _endTime = picked;
-        }
+        _elapsed = _calculateTotalDuration();
       });
-    }
+    });
+
+    setState(() {});
   }
 
-  void _saveRecord() {
+  void _pause() {
+    if (_currentStart != null) {
+      _segments.add({
+        'start': _currentStart!,
+        'end': DateTime.now(),
+      });
+    }
+
+    _timer?.cancel();
+    _isRunning = false;
+    _currentStart = null;
+
+    setState(() {
+      _elapsed = _calculateTotalDuration();
+    });
+  }
+
+  void _resume() {
+    _start();
+  }
+
+  Duration _calculateTotalDuration() {
+    Duration total = Duration.zero;
+
+    for (var s in _segments) {
+      total += s['end']!.difference(s['start']!);
+    }
+
+    if (_isRunning && _currentStart != null) {
+      total += DateTime.now().difference(_currentStart!);
+    }
+
+    return total;
+  }
+
+  // ================== 저장 ==================
+
+  Future<void> _saveRecord() async {
     final title = _useCustom ? _titleController.text : _selectedTitle;
 
-    if (title == null ||
-        title.isEmpty ||
-        _startTime == null ||
-        _endTime == null) {
+    if (title == null || title.isEmpty || _segments.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("모든 값을 입력해주세요")),
+        const SnackBar(content: Text("기록이 없습니다")),
       );
       return;
     }
 
-    final now = DateTime.now();
+    try {
+      for (var s in _segments) {
+        final record = Plan(
+          id: '',
+          title: title,
+          startTime: s['start']!,
+          endTime: s['end']!,
+        );
 
-    final startDateTime = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      _startTime!.hour,
-      _startTime!.minute,
-    );
+        await _firebaseService.addRecord(record);
+      }
 
-    final endDateTime = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      _endTime!.hour,
-      _endTime!.minute,
-    );
+      if (!mounted) return;
 
-    final newRecord = Plan(
-      id: DateTime.now().toString(),
-      title: title,
-      startTime: startDateTime,
-      endTime: endDateTime,
-    );
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text("기록 저장 완료")),
+      );
 
-    Navigator.pop(context, newRecord);
+      Navigator.pop(context);
+    } catch (e) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text("에러: $e")),
+      );
+    }
   }
 
-  String _formatTime(TimeOfDay? time) {
-    if (time == null) return "선택";
-    return "${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}";
+  // ================== UI ==================
+
+  String _formatDuration(Duration d) {
+    return "${d.inHours.toString().padLeft(2, '0')}:"
+        "${(d.inMinutes % 60).toString().padLeft(2, '0')}:"
+        "${(d.inSeconds % 60).toString().padLeft(2, '0')}";
+  }
+
+  @override
+  void dispose() {
+    _timer?.cancel();
+    super.dispose();
   }
 
   @override
@@ -90,23 +137,22 @@ class _RecordCreatePageState extends State<RecordCreatePage> {
     final planTitles = widget.plans.map((p) => p.title).toSet().toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text("기록 추가")),
+      appBar: AppBar(title: const Text("타이머 기록")),
       body: Padding(
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
 
+            // ===== 제목 선택 =====
             Row(
               children: [
                 Expanded(
                   child: RadioListTile(
-                    title: const Text("계획에서 선택"),
+                    title: const Text("계획 선택"),
                     value: false,
                     groupValue: _useCustom,
                     onChanged: (value) {
-                      setState(() {
-                        _useCustom = value!;
-                      });
+                      setState(() => _useCustom = value!);
                     },
                   ),
                 ),
@@ -116,72 +162,84 @@ class _RecordCreatePageState extends State<RecordCreatePage> {
                     value: true,
                     groupValue: _useCustom,
                     onChanged: (value) {
-                      setState(() {
-                        _useCustom = value!;
-                      });
+                      setState(() => _useCustom = value!);
                     },
                   ),
                 ),
               ],
             ),
 
-            const SizedBox(height: 10),
-
             if (!_useCustom)
               DropdownButtonFormField<String>(
                 hint: const Text("계획 선택"),
                 items: planTitles
-                    .map((title) => DropdownMenuItem(
-                          value: title,
-                          child: Text(title),
-                        ))
+                    .map((t) => DropdownMenuItem(value: t, child: Text(t)))
                     .toList(),
                 onChanged: (value) {
-                  setState(() {
-                    _selectedTitle = value;
-                  });
+                  setState(() => _selectedTitle = value);
                 },
               )
             else
               TextField(
                 controller: _titleController,
-                decoration: const InputDecoration(
-                  labelText: "제목",
-                  border: OutlineInputBorder(),
-                ),
+                decoration: const InputDecoration(labelText: "제목"),
               ),
-
-            const SizedBox(height: 20),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("시작 시간"),
-                TextButton(
-                  onPressed: () => _pickTime(true),
-                  child: Text(_formatTime(_startTime)),
-                ),
-              ],
-            ),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("종료 시간"),
-                TextButton(
-                  onPressed: () => _pickTime(false),
-                  child: Text(_formatTime(_endTime)),
-                ),
-              ],
-            ),
 
             const SizedBox(height: 30),
 
-            SizedBox(
-              width: double.infinity,
-              child: ElevatedButton(
-                onPressed: _saveRecord,
-                child: const Text("저장"),
+            // ===== 타이머 =====
+            Text(
+              _formatDuration(_elapsed),
+              style: const TextStyle(fontSize: 40, fontWeight: FontWeight.bold),
+            ),
+
+            const SizedBox(height: 20),
+
+            // ===== 버튼 =====
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceEvenly,
+              children: [
+                if (!_isRunning && _segments.isEmpty)
+                  ElevatedButton(
+                    onPressed: _start,
+                    child: const Text("시작"),
+                  ),
+
+                if (_isRunning)
+                  ElevatedButton(
+                    onPressed: _pause,
+                    child: const Text("일시정지"),
+                  ),
+
+                if (!_isRunning && _segments.isNotEmpty)
+                  ElevatedButton(
+                    onPressed: _resume,
+                    child: const Text("재시작"),
+                  ),
+              ],
+            ),
+
+            const SizedBox(height: 20),
+
+            // ===== 기록 저장 =====
+            ElevatedButton(
+              onPressed: _saveRecord,
+              child: const Text("기록 저장"),
+            ),
+
+            const SizedBox(height: 20),
+
+            // ===== 세그먼트 표시 =====
+            Expanded(
+              child: ListView(
+                children: _segments.map((s) {
+                  final diff = s['end']!.difference(s['start']!);
+                  return ListTile(
+                    title: Text(
+                        "${s['start']!.hour}:${s['start']!.minute} ~ ${s['end']!.hour}:${s['end']!.minute}"),
+                    subtitle: Text("${diff.inMinutes}분"),
+                  );
+                }).toList(),
               ),
             ),
           ],
