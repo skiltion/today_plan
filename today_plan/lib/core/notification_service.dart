@@ -87,4 +87,43 @@ class NotificationService {
 
     return scheduled;
   }
+
+  static Future<void> showRunningNotification(String title) async {
+  await _notifications.show(
+    999,
+    "⏱ 진행중",
+    "$title 시작됨",
+    const NotificationDetails(
+      android: AndroidNotificationDetails(
+        'running_channel',
+        'Running Timer',
+        importance: Importance.max,
+        priority: Priority.high,
+        ongoing: true,
+      ),
+    ),
+  );
+}
+
+static Future<void> updateRunningNotification(
+    String title, int minutes) async {
+  await _notifications.show(
+    999,
+    "⏱ 진행중",
+    "$title - ${minutes}분 진행중",
+    const NotificationDetails(
+      android: AndroidNotificationDetails(
+        'running_channel',
+        'Running Timer',
+        importance: Importance.max,
+        priority: Priority.high,
+        ongoing: true,
+      ),
+    ),
+  );
+}
+
+static Future<void> cancelRunningNotification() async {
+  await _notifications.cancel(999);
+}
 }

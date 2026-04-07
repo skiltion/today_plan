@@ -5,6 +5,9 @@ import 'firebase_options.dart';
 import 'core/notification_service.dart';
 import 'features/auth/auth_wrapper.dart';
 
+import 'package:provider/provider.dart';
+import 'data/services/timer_state.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
@@ -12,7 +15,12 @@ void main() async {
     options: DefaultFirebaseOptions.currentPlatform,
   );
 
-  runApp(const MyApp());
+  runApp(
+    ChangeNotifierProvider(
+      create: (_) => TimerState(),
+      child: const MyApp(),
+    ),
+  );
 }
 
 class MyApp extends StatefulWidget {
@@ -23,12 +31,10 @@ class MyApp extends StatefulWidget {
 }
 
 class _MyAppState extends State<MyApp> {
-
   @override
   void initState() {
     super.initState();
 
-    // 🔥 앱 실행 시 알림 초기화 (1회 등록 포함)
     WidgetsBinding.instance.addPostFrameCallback((_) {
       NotificationService.init();
     });

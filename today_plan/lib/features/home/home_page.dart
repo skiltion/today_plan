@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
+import 'package:provider/provider.dart';
 
+import '../../data/services/timer_state.dart';
 import '../../data/models/plan_model.dart';
 import '../plan/plan_create_page.dart';
 import '../record/record_create_page.dart';
 import '../analysis/analysis_page.dart';
 import '../analysis/weekly_analysis_page.dart';
-import '../history/history_page.dart';
+import '../calendar/calendar_page.dart';
 import '../plan/plan_edit_page.dart';
 import '../record/record_edit_page.dart';
 
@@ -77,15 +79,34 @@ class HomePage extends StatelessWidget {
   double calculateAchievement(List<Plan> plans, List<Plan> records) {
     if (plans.isEmpty) return 0;
 
-    int success = 0;
+    double totalPlanned = 0;
+    double totalActual = 0;
 
     for (var plan in plans) {
-      if (records.any((r) => isOverlapping(plan, r))) {
-        success++;
+      final planned =
+          plan.endTime.difference(plan.startTime).inMinutes;
+
+      totalPlanned += planned;
+
+      // 같은 제목 + 겹치는 기록만 합산
+      for (var r in records) {
+        if (isOverlapping(plan, r)) {
+          final overlapStart = r.startTime.isAfter(plan.startTime)
+              ? r.startTime
+              : plan.startTime;
+
+          final overlapEnd = r.endTime.isBefore(plan.endTime)
+              ? r.endTime
+              : plan.endTime;
+
+          totalActual += overlapEnd.difference(overlapStart).inMinutes;
+        }
       }
     }
 
-    return success / plans.length;
+    if (totalPlanned == 0) return 0;
+
+    return (totalActual / totalPlanned).clamp(0, 1);
   }
 
   String formatTime(DateTime t) {
@@ -96,23 +117,27 @@ class HomePage extends StatelessWidget {
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FB),
+        appBar: AppBar(
+          title: const Text("하루계획"),
+          bottom: PreferredSize(
+            preferredSize: const Size.fromHeight(20),
+            child: Consumer<TimerState>(
+              builder: (_, timer, __) {
+                if (!timer.isRunning) return const SizedBox();
 
-      appBar: AppBar(
-        title: const Text("하루계획"),
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        foregroundColor: Colors.black,
-        actions: [
-          IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await FirebaseAuth.instance.signOut();
-              if (!context.mounted) return;
-              Navigator.pushReplacementNamed(context, '/');
-            },
-          )
-        ],
-      ),
+                return Container(
+                  width: double.infinity,
+                  padding: const EdgeInsets.only(bottom: 6),
+                  child: Text(
+                    "⏱ ${timer.currentTitle} (${timer.elapsed.inMinutes}분)",
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(fontSize: 12),
+                  ),
+                );
+              },
+            ),
+          ),
+        ),
 
       // 🔥 Drawer
       drawer: Drawer(
@@ -127,12 +152,12 @@ class HomePage extends StatelessWidget {
               onTap: () => Navigator.pop(context),
             ),
             ListTile(
-              leading: const Icon(Icons.history),
-              title: const Text("기록 조회"),
+              leading: const Icon(Icons.calendar_month),
+              title: const Text("캘린더"),
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const HistoryPage()),
+                  MaterialPageRoute(builder: (_) => const CalendarPage()),
                 );
               },
             ),
