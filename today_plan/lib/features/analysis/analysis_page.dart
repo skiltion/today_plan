@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import '../../data/models/plan_model.dart';
+import '../../data/models/record_model.dart';
 
 class AnalysisPage extends StatelessWidget {
   final List<Plan> plans;
-  final List<Plan> records;
+  final List<Record> records;
   final DateTime date;
 
   const AnalysisPage({
@@ -13,37 +14,31 @@ class AnalysisPage extends StatelessWidget {
     required this.date,
   });
 
-  // 🔥 겹친 시간 계산 (분 단위)
-  int calculateOverlapMinutes(Plan p, Plan r) {
-    final start = p.startTime.isAfter(r.startTime)
-        ? p.startTime
-        : r.startTime;
+  // 🔥 실제 수행 시간 계산 (분)
+  int calculateActualMinutes(String title) {
+    final related =
+        records.where((r) => r.title == title);
 
-    final end =
-        p.endTime.isBefore(r.endTime) ? p.endTime : r.endTime;
+    int total = 0;
 
-    if (end.isBefore(start)) return 0;
-
-    return end.difference(start).inMinutes;
-  }
-
-  // 🔥 계획별 분석
-  Map<String, dynamic> analyzePlan(Plan plan) {
-    final relatedRecords =
-        records.where((r) => r.title == plan.title);
-
-    int totalActual = 0;
-
-    for (var r in relatedRecords) {
-      totalActual += calculateOverlapMinutes(plan, r);
+    for (var r in related) {
+      total += r.endTime
+          .difference(r.startTime)
+          .inMinutes;
     }
 
-    final planned =
-        plan.endTime.difference(plan.startTime).inMinutes;
+    return total;
+  }
 
-    double ratio = planned == 0 ? 0 : totalActual / planned;
+  // 🔥 계획 분석
+  Map<String, dynamic> analyzePlan(Plan plan) {
+    final planned = plan.duration; // 🔥 핵심 변경
+    final actual = calculateActualMinutes(plan.title);
 
-    int diff = totalActual - planned; // + 초과 / - 부족
+    final ratio =
+        planned == 0 ? 0 : (actual / planned).clamp(0, 1);
+
+    final diff = actual - planned;
 
     Color color;
     if (ratio >= 0.8) {
@@ -56,28 +51,28 @@ class AnalysisPage extends StatelessWidget {
 
     return {
       "planned": planned,
-      "actual": totalActual,
+      "actual": actual,
       "ratio": ratio,
       "diff": diff,
       "color": color,
     };
   }
 
+  String formatDate(DateTime d) {
+    return "${d.year}-${d.month}-${d.day}";
+  }
+
   @override
   Widget build(BuildContext context) {
-    final totalPlans = plans.length;
-
     return Scaffold(
       appBar: AppBar(
-        title: Text(
-            "${date.year}-${date.month}-${date.day} 분석"),
+        title: Text("${formatDate(date)} 분석"),
       ),
       body: plans.isEmpty
           ? const Center(child: Text("계획 없음"))
           : ListView(
               padding: const EdgeInsets.all(16),
               children: [
-
                 ...plans.map((plan) {
                   final result = analyzePlan(plan);
 
@@ -98,15 +93,16 @@ class AnalysisPage extends StatelessWidget {
                           Text(
                             plan.title,
                             style: const TextStyle(
-                                fontSize: 16,
-                                fontWeight: FontWeight.bold),
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
                           ),
 
                           const SizedBox(height: 8),
 
-                          // 🔥 Progress Bar
+                          // 🔥 진행률 바
                           LinearProgressIndicator(
-                            value: ratio.clamp(0, 1),
+                            value: ratio,
                             color: color,
                             minHeight: 8,
                           ),
@@ -118,7 +114,7 @@ class AnalysisPage extends StatelessWidget {
 
                           const SizedBox(height: 4),
 
-                          // 🔥 초과/부족 표시
+                          // 🔥 초과/부족
                           Text(
                             diff >= 0
                                 ? "🔵 ${diff}분 초과"
@@ -134,7 +130,8 @@ class AnalysisPage extends StatelessWidget {
                           const SizedBox(height: 4),
 
                           Text(
-                              "달성률: ${(ratio * 100).toStringAsFixed(1)}%"),
+                            "달성률: ${(ratio * 100).toStringAsFixed(1)}%",
+                          ),
                         ],
                       ),
                     ),

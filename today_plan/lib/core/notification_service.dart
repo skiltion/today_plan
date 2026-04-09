@@ -1,6 +1,5 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:shared_preferences/shared_preferences.dart';
-
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
 
@@ -19,23 +18,33 @@ class NotificationService {
       iOS: ios,
     );
 
-    // 🔥 클릭 이벤트 없음 (앱만 열림)
     await _notifications.initialize(settings);
 
-    // 🔥 권한 요청
-    await _notifications
-        .resolvePlatformSpecificImplementation<
-            AndroidFlutterLocalNotificationsPlugin>()
-        ?.requestNotificationsPermission();
+    // 🔥 채널 생성 (핵심)
+    final androidPlugin =
+        _notifications.resolvePlatformSpecificImplementation<
+            AndroidFlutterLocalNotificationsPlugin>();
 
-    await _notifications
-        .resolvePlatformSpecificImplementation<
-            IOSFlutterLocalNotificationsPlugin>()
-        ?.requestPermissions(
-          alert: true,
-          badge: true,
-          sound: true,
-        );
+    await androidPlugin?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'timer_channel',
+        'Timer Service',
+        description: '백그라운드 타이머',
+        importance: Importance.low,
+      ),
+    );
+
+    await androidPlugin?.createNotificationChannel(
+      const AndroidNotificationChannel(
+        'running_channel',
+        'Running Timer',
+        description: '실행 중 타이머',
+        importance: Importance.max,
+      ),
+    );
+
+    // 권한 요청
+    await androidPlugin?.requestNotificationsPermission();
 
     final prefs = await SharedPreferences.getInstance();
     final isScheduled = prefs.getBool('notification_scheduled') ?? false;
@@ -46,6 +55,54 @@ class NotificationService {
     }
   }
 
+  // ================== 실시간 타이머 알림 ==================
+
+  static Future<void> showRunningNotification(String title) async {
+    await _notifications.show(
+      999,
+      "⏱ 진행중",
+      "$title 시작됨",
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'running_channel',
+          'Running Timer',
+          importance: Importance.max,
+          priority: Priority.high,
+          ongoing: true,
+        ),
+      ),
+      payload: "timer",
+    );
+  }
+
+  static Future<void> updateRunningNotification(
+      String title, int seconds) async {
+    final minutes = (seconds ~/ 60);
+    final sec = seconds % 60;
+
+    await _notifications.show(
+      999,
+      "⏱ $title",
+      "${minutes}분 ${sec}초 진행중",
+      const NotificationDetails(
+        android: AndroidNotificationDetails(
+          'running_channel',
+          'Running Timer',
+          importance: Importance.max,
+          priority: Priority.high,
+          ongoing: true,
+        ),
+      ),
+      payload: "timer",
+    );
+  }
+
+  static Future<void> cancelRunningNotification() async {
+    await _notifications.cancel(999);
+  }
+
+  // ================== 기존 예약 알림 ==================
+
   static Future<void> scheduleDailyNotifications() async {
     await _schedule(1, 9, "🌅 아침 점검", "오늘 계획 확인!");
     await _schedule(2, 13, "🍽 점심 점검", "진행 체크!");
@@ -54,25 +111,29 @@ class NotificationService {
 
   static Future<void> _schedule(
       int id, int hour, String title, String body) async {
-    await _notifications.zonedSchedule(
-      id,
-      title,
-      body,
-      _nextInstanceOf(hour),
-      const NotificationDetails(
-        android: AndroidNotificationDetails(
-          'daily_channel',
-          'Daily Notifications',
-          importance: Importance.max,
-          priority: Priority.high,
+    try {
+      await _notifications.zonedSchedule(
+        id,
+        title,
+        body,
+        _nextInstanceOf(hour),
+        const NotificationDetails(
+          android: AndroidNotificationDetails(
+            'daily_channel',
+            'Daily Notifications',
+            importance: Importance.max,
+            priority: Priority.high,
+          ),
+          iOS: DarwinNotificationDetails(),
         ),
-        iOS: DarwinNotificationDetails(),
-      ),
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      uiLocalNotificationDateInterpretation:
-          UILocalNotificationDateInterpretation.absoluteTime,
-      matchDateTimeComponents: DateTimeComponents.time,
-    );
+        androidScheduleMode: AndroidScheduleMode.inexactAllowWhileIdle, // 🔥 변경
+        uiLocalNotificationDateInterpretation:
+            UILocalNotificationDateInterpretation.absoluteTime,
+        matchDateTimeComponents: DateTimeComponents.time,
+      );
+    } catch (e) {
+      print("알림 스케줄 실패 (권한 문제): $e");
+    }
   }
 
   static tz.TZDateTime _nextInstanceOf(int hour) {
@@ -87,43 +148,4 @@ class NotificationService {
 
     return scheduled;
   }
-
-  static Future<void> showRunningNotification(String title) async {
-  await _notifications.show(
-    999,
-    "⏱ 진행중",
-    "$title 시작됨",
-    const NotificationDetails(
-      android: AndroidNotificationDetails(
-        'running_channel',
-        'Running Timer',
-        importance: Importance.max,
-        priority: Priority.high,
-        ongoing: true,
-      ),
-    ),
-  );
-}
-
-static Future<void> updateRunningNotification(
-    String title, int minutes) async {
-  await _notifications.show(
-    999,
-    "⏱ 진행중",
-    "$title - ${minutes}분 진행중",
-    const NotificationDetails(
-      android: AndroidNotificationDetails(
-        'running_channel',
-        'Running Timer',
-        importance: Importance.max,
-        priority: Priority.high,
-        ongoing: true,
-      ),
-    ),
-  );
-}
-
-static Future<void> cancelRunningNotification() async {
-  await _notifications.cancel(999);
-}
 }

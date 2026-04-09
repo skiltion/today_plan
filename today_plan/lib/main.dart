@@ -1,55 +1,88 @@
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
-import 'firebase_options.dart';
-
-import 'core/notification_service.dart';
-import 'features/auth/auth_wrapper.dart';
-
 import 'package:provider/provider.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
+
 import 'data/services/timer_state.dart';
+import 'features/home/home_page.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
 
-  await Firebase.initializeApp(
-    options: DefaultFirebaseOptions.currentPlatform,
-  );
+  // 🔥 Firebase 반드시 먼저 초기화
+  await Firebase.initializeApp();
+
+  // 🔥 백그라운드 서비스 초기화
+  await initializeService();
 
   runApp(
-    ChangeNotifierProvider(
-      create: (_) => TimerState(),
+    MultiProvider(
+      providers: [
+        ChangeNotifierProvider(create: (_) => TimerState()),
+      ],
       child: const MyApp(),
     ),
   );
 }
 
-class MyApp extends StatefulWidget {
+/// 🔥 백그라운드 서비스 설정
+Future<void> initializeService() async {
+  final service = FlutterBackgroundService();
+
+  await service.configure(
+    androidConfiguration: AndroidConfiguration(
+      onStart: onStart,
+      autoStart: false,
+      isForegroundMode: true,
+      notificationChannelId: 'timer_channel',
+      initialNotificationTitle: '타이머 실행 중',
+      initialNotificationContent: '0초',
+    ),
+    iosConfiguration: IosConfiguration(),
+  );
+}
+
+/// 🔥 백그라운드 실행 함수
+@pragma('vm:entry-point')
+void onStart(ServiceInstance service) {
+  int seconds = 0;
+  bool isPaused = false;
+
+  service.on('pause').listen((event) {
+    isPaused = true;
+  });
+
+  service.on('resume').listen((event) {
+    isPaused = false;
+  });
+
+  Future.doWhile(() async {
+    await Future.delayed(const Duration(seconds: 1));
+
+    if (!isPaused) {
+      seconds++;
+
+      service.invoke('update', {"seconds": seconds});
+
+      if (service is AndroidServiceInstance) {
+        service.setForegroundNotificationInfo(
+          title: "타이머 실행 중",
+          content: "$seconds 초",
+        );
+      }
+    }
+
+    return true;
+  });
+}
+
+class MyApp extends StatelessWidget {
   const MyApp({super.key});
 
   @override
-  State<MyApp> createState() => _MyAppState();
-}
-
-class _MyAppState extends State<MyApp> {
-  @override
-  void initState() {
-    super.initState();
-
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      NotificationService.init();
-    });
-  }
-
-  @override
   Widget build(BuildContext context) {
-    return MaterialApp(
-      title: '하루계획',
-      debugShowCheckedModeBanner: false,
-      theme: ThemeData(
-        primarySwatch: Colors.blue,
-        scaffoldBackgroundColor: const Color(0xFFF5F7FB),
-      ),
-      home: const AuthWrapper(),
+    return const MaterialApp(
+      home: HomePage(), // ✅ 바로 홈으로 이동
     );
   }
 }

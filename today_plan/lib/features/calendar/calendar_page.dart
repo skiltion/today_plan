@@ -3,7 +3,7 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:table_calendar/table_calendar.dart';
 
-import '../../data/models/plan_model.dart';
+import '../../data/models/record_model.dart';
 
 class CalendarPage extends StatefulWidget {
   const CalendarPage({super.key});
@@ -16,8 +16,8 @@ class _CalendarPageState extends State<CalendarPage> {
   DateTime _focusedDay = DateTime.now();
   DateTime _selectedDay = DateTime.now();
 
-  Map<DateTime, List<Plan>> _events = {};
-  List<Plan> _selectedRecords = [];
+  Map<DateTime, List<Record>> _events = {};
+  List<Record> _selectedRecords = [];
 
   String get userId => FirebaseAuth.instance.currentUser!.uid;
 
@@ -28,7 +28,7 @@ class _CalendarPageState extends State<CalendarPage> {
     _loadSelectedDayRecords(_selectedDay);
   }
 
-  // 🔥 해당 월 데이터 불러오기 (점 표시용)
+  // 🔥 월별 기록 → 점 표시
   Future<void> _loadMonthlyRecords(DateTime month) async {
     final start = DateTime(month.year, month.month, 1);
     final end = DateTime(month.year, month.month + 1, 1);
@@ -40,17 +40,10 @@ class _CalendarPageState extends State<CalendarPage> {
         .where('startTime', isLessThan: end)
         .get();
 
-    Map<DateTime, List<Plan>> tempEvents = {};
+    Map<DateTime, List<Record>> tempEvents = {};
 
     for (var doc in snapshot.docs) {
-      final data = doc.data();
-
-      final record = Plan(
-        id: doc.id,
-        title: data['title'],
-        startTime: (data['startTime'] as Timestamp).toDate(),
-        endTime: (data['endTime'] as Timestamp).toDate(),
-      );
+      final record = Record.fromMap(doc.id, doc.data());
 
       final day = DateTime(
         record.startTime.year,
@@ -58,10 +51,7 @@ class _CalendarPageState extends State<CalendarPage> {
         record.startTime.day,
       );
 
-      if (tempEvents[day] == null) {
-        tempEvents[day] = [];
-      }
-
+      tempEvents.putIfAbsent(day, () => []);
       tempEvents[day]!.add(record);
     }
 
@@ -83,25 +73,24 @@ class _CalendarPageState extends State<CalendarPage> {
         .get();
 
     setState(() {
-      _selectedRecords = snapshot.docs.map((doc) {
-        final data = doc.data();
-        return Plan(
-          id: doc.id,
-          title: data['title'],
-          startTime: (data['startTime'] as Timestamp).toDate(),
-          endTime: (data['endTime'] as Timestamp).toDate(),
-        );
-      }).toList();
+      _selectedRecords = snapshot.docs
+          .map((doc) => Record.fromMap(doc.id, doc.data()))
+          .toList();
     });
   }
 
-  List<Plan> _getEventsForDay(DateTime day) {
+  List<Record> _getEventsForDay(DateTime day) {
     final key = DateTime(day.year, day.month, day.day);
     return _events[key] ?? [];
   }
 
   String _formatTime(DateTime t) {
-    return "${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}";
+    return "${t.hour.toString().padLeft(2, '0')}:"
+        "${t.minute.toString().padLeft(2, '0')}";
+  }
+
+  String _formatDuration(Duration d) {
+    return "${d.inHours}시간 ${d.inMinutes % 60}분";
   }
 
   @override
@@ -154,7 +143,7 @@ class _CalendarPageState extends State<CalendarPage> {
 
           const SizedBox(height: 10),
 
-          // 🔥 선택 날짜 표시
+          // 🔥 날짜 표시
           Padding(
             padding: const EdgeInsets.all(8),
             child: Text(
@@ -190,8 +179,7 @@ class _CalendarPageState extends State<CalendarPage> {
                           title: Text(r.title),
                           subtitle: Text(
                               "${_formatTime(r.startTime)} ~ ${_formatTime(r.endTime)}"),
-                          trailing:
-                              Text("${duration.inMinutes}분"),
+                          trailing: Text(_formatDuration(duration)),
                         ),
                       );
                     },

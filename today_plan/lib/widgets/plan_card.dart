@@ -6,6 +6,16 @@ class PlanCard extends StatelessWidget {
 
   const PlanCard({super.key, required this.plan});
 
+  String _formatDuration(int minutes) {
+    final hours = minutes ~/ 60;
+    final mins = minutes % 60;
+
+    if (hours == 0) return "${mins}분";
+    if (mins == 0) return "${hours}시간";
+
+    return "${hours}시간 ${mins}분";
+  }
+
   @override
   Widget build(BuildContext context) {
     return Card(
@@ -18,11 +28,14 @@ class PlanCard extends StatelessWidget {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
+            // 🔥 duration 표시
             Text(
-              "${plan.startTime.hour}:${plan.startTime.minute} ~ ${plan.endTime.hour}:${plan.endTime.minute}",
+              _formatDuration(plan.duration),
               style: const TextStyle(fontSize: 14, color: Colors.grey),
             ),
             const SizedBox(height: 4),
+
+            // 제목
             Text(
               plan.title,
               style: const TextStyle(fontSize: 16),

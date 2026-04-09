@@ -12,9 +12,7 @@ class PlanEditPage extends StatefulWidget {
 
 class _PlanEditPageState extends State<PlanEditPage> {
   late TextEditingController _titleController;
-
-  TimeOfDay? _startTime;
-  TimeOfDay? _endTime;
+  late TextEditingController _durationController;
 
   @override
   void initState() {
@@ -23,54 +21,34 @@ class _PlanEditPageState extends State<PlanEditPage> {
     _titleController =
         TextEditingController(text: widget.plan.title);
 
-    _startTime = TimeOfDay.fromDateTime(widget.plan.startTime);
-    _endTime = TimeOfDay.fromDateTime(widget.plan.endTime);
-  }
-
-  Future<void> _pickTime(bool isStart) async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: _startTime ?? TimeOfDay.now(),
-    );
-
-    if (picked != null) {
-      setState(() {
-        if (isStart) {
-          _startTime = picked;
-        } else {
-          _endTime = picked;
-        }
-      });
-    }
+    _durationController =
+        TextEditingController(text: widget.plan.duration.toString());
   }
 
   void _save() {
-    final now = DateTime.now();
+    final duration = int.tryParse(_durationController.text);
+
+    if (_titleController.text.isEmpty ||
+        duration == null ||
+        duration <= 0) {
+      return;
+    }
 
     final updated = Plan(
       id: widget.plan.id,
       title: _titleController.text,
-      startTime: DateTime(
-        now.year,
-        now.month,
-        now.day,
-        _startTime!.hour,
-        _startTime!.minute,
-      ),
-      endTime: DateTime(
-        now.year,
-        now.month,
-        now.day,
-        _endTime!.hour,
-        _endTime!.minute,
-      ),
+      duration: duration,
+      date: widget.plan.date,
     );
 
     Navigator.pop(context, updated);
   }
 
   void _delete() {
-    Navigator.pop(context, {"delete": true, "id": widget.plan.id});
+    Navigator.pop(context, {
+      "delete": true,
+      "id": widget.plan.id,
+    });
   }
 
   @override
@@ -85,26 +63,10 @@ class _PlanEditPageState extends State<PlanEditPage> {
 
             const SizedBox(height: 20),
 
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("시작"),
-                TextButton(
-                  onPressed: () => _pickTime(true),
-                  child: Text(_startTime!.format(context)),
-                ),
-              ],
-            ),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("종료"),
-                TextButton(
-                  onPressed: () => _pickTime(false),
-                  child: Text(_endTime!.format(context)),
-                ),
-              ],
+            TextField(
+              controller: _durationController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(labelText: "시간 (분)"),
             ),
 
             const SizedBox(height: 20),

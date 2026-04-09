@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
-import '../../data/models/plan_model.dart';
+import '../../data/models/record_model.dart';
 
 class RecordEditPage extends StatelessWidget {
-  final Plan record;
+  final Record record;
 
   const RecordEditPage({super.key, required this.record});
 
@@ -11,7 +11,15 @@ class RecordEditPage extends StatelessWidget {
   }
 
   String _formatTime(DateTime t) {
-    return "${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}";
+    return "${t.hour.toString().padLeft(2, '0')}:"
+        "${t.minute.toString().padLeft(2, '0')}:"
+        "${t.second.toString().padLeft(2, '0')}";
+  }
+
+  String _formatDuration(Duration d) {
+    return "${d.inHours}시간 "
+        "${d.inMinutes % 60}분 "
+        "${d.inSeconds % 60}초";
   }
 
   @override
@@ -24,8 +32,7 @@ class RecordEditPage extends StatelessWidget {
         padding: const EdgeInsets.all(16),
         child: Column(
           children: [
-
-            // ===== 제목 =====
+            // 제목
             ListTile(
               title: const Text("제목"),
               subtitle: Text(record.title),
@@ -33,7 +40,7 @@ class RecordEditPage extends StatelessWidget {
 
             const Divider(),
 
-            // ===== 시간 =====
+            // 시간
             ListTile(
               title: const Text("시간"),
               subtitle: Text(
@@ -41,15 +48,14 @@ class RecordEditPage extends StatelessWidget {
               ),
             ),
 
-            // ===== 총 시간 =====
+            // 총 시간
             ListTile(
               title: const Text("총 수행 시간"),
-              subtitle: Text("${duration.inMinutes}분"),
+              subtitle: Text(_formatDuration(duration)),
             ),
 
             const Spacer(),
 
-            // ===== 삭제 버튼 =====
             SizedBox(
               width: double.infinity,
               child: ElevatedButton(

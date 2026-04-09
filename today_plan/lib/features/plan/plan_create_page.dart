@@ -10,84 +10,38 @@ class PlanCreatePage extends StatefulWidget {
 }
 
 class _PlanCreatePageState extends State<PlanCreatePage> {
-  final TextEditingController _titleController = TextEditingController();
-  final FirebaseService _firebaseService = FirebaseService();
-
-  TimeOfDay? _startTime;
-  TimeOfDay? _endTime;
-
-  Future<void> _pickTime(bool isStart) async {
-    final picked = await showTimePicker(
-      context: context,
-      initialTime: TimeOfDay.now(),
-    );
-
-    if (picked != null) {
-      setState(() {
-        if (isStart) {
-          _startTime = picked;
-        } else {
-          _endTime = picked;
-        }
-      });
-    }
-  }
+  final _titleController = TextEditingController();
+  final _durationController = TextEditingController();
+  final _firebaseService = FirebaseService();
 
   Future<void> _savePlan() async {
-    if (_titleController.text.isEmpty ||
-        _startTime == null ||
-        _endTime == null) {
+    final title = _titleController.text;
+    final duration = int.tryParse(_durationController.text);
+
+    if (title.isEmpty || duration == null || duration <= 0) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("모든 값을 입력해주세요")),
+        const SnackBar(content: Text("제목과 시간을 입력해주세요")),
       );
       return;
     }
 
-    final now = DateTime.now();
+    final today = DateTime.now().toIso8601String().substring(0, 10);
 
-    final startDateTime = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      _startTime!.hour,
-      _startTime!.minute,
-    );
-
-    final endDateTime = DateTime(
-      now.year,
-      now.month,
-      now.day,
-      _endTime!.hour,
-      _endTime!.minute,
-    );
-
-    final newPlan = Plan(
+    final plan = Plan(
       id: '',
-      title: _titleController.text,
-      startTime: startDateTime,
-      endTime: endDateTime,
+      title: title,
+      duration: duration,
+      date: today,
     );
 
-    try {
-      await _firebaseService.addPlan(newPlan); // 🔥 핵심
+    await _firebaseService.addPlan(plan);
 
-      if (!mounted) return;
+    if (!mounted) return;
 
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text("계획 저장 완료")),
-      );
+    ScaffoldMessenger.of(context)
+        .showSnackBar(const SnackBar(content: Text("저장 완료")));
 
-      Navigator.pop(context); // 🔥 이제 그냥 닫기만
-    } catch (e) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text("에러 발생: $e")),
-      );
-    }
-  }
-
-  String _formatTime(TimeOfDay? time) {
-    if (time == null) return "선택";
-    return "${time.hour.toString().padLeft(2, '0')}:${time.minute.toString().padLeft(2, '0')}";
+    Navigator.pop(context);
   }
 
   @override
@@ -100,33 +54,18 @@ class _PlanCreatePageState extends State<PlanCreatePage> {
           children: [
             TextField(
               controller: _titleController,
-              decoration: const InputDecoration(
-                labelText: "제목",
-                border: OutlineInputBorder(),
-              ),
+              decoration: const InputDecoration(labelText: "제목"),
             ),
+
             const SizedBox(height: 20),
 
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("시작 시간"),
-                TextButton(
-                  onPressed: () => _pickTime(true),
-                  child: Text(_formatTime(_startTime)),
-                ),
-              ],
-            ),
-
-            Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text("종료 시간"),
-                TextButton(
-                  onPressed: () => _pickTime(false),
-                  child: Text(_formatTime(_endTime)),
-                ),
-              ],
+            TextField(
+              controller: _durationController,
+              keyboardType: TextInputType.number,
+              decoration: const InputDecoration(
+                labelText: "시간 (분)",
+                hintText: "예: 120",
+              ),
             ),
 
             const SizedBox(height: 30),

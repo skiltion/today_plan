@@ -2,49 +2,62 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
+import 'package:flutter_background_service/flutter_background_service.dart';
 
 import '../../data/services/timer_state.dart';
 import '../../data/models/plan_model.dart';
+import '../../data/models/record_model.dart';
+
 import '../plan/plan_create_page.dart';
 import '../record/record_create_page.dart';
 import '../analysis/analysis_page.dart';
-import '../analysis/weekly_analysis_page.dart';
 import '../calendar/calendar_page.dart';
 import '../plan/plan_edit_page.dart';
 import '../record/record_edit_page.dart';
 
-class HomePage extends StatelessWidget {
+class HomePage extends StatefulWidget {
   const HomePage({super.key});
+
+  @override
+  State<HomePage> createState() => _HomePageState();
+}
+
+class _HomePageState extends State<HomePage> {
+  final service = FlutterBackgroundService();
 
   String get userId => FirebaseAuth.instance.currentUser!.uid;
 
-  // 🔥 계획 스트림
+  // ================== INIT ==================
+  @override
+  void initState() {
+    super.initState();
+
+    final timer = context.read<TimerState>();
+
+    /// 🔥 백그라운드 → UI 연결
+    service.on('update').listen((event) {
+      if (event != null) {
+        final seconds = event["seconds"];
+        timer.updateFromBackground(seconds);
+      }
+    });
+  }
+
+  // ================== 계획 ==================
   Stream<List<Plan>> getPlansStream() {
-    final now = DateTime.now();
-    final start = DateTime(now.year, now.month, now.day);
-    final end = start.add(const Duration(days: 1));
+    final today = DateTime.now().toIso8601String().substring(0, 10);
 
     return FirebaseFirestore.instance
         .collection('plans')
         .where('userId', isEqualTo: userId)
-        .where('startTime', isGreaterThanOrEqualTo: start)
-        .where('startTime', isLessThan: end)
+        .where('date', isEqualTo: today)
         .snapshots()
-        .map((snapshot) {
-      return snapshot.docs.map((doc) {
-        final data = doc.data();
-        return Plan(
-          id: doc.id,
-          title: data['title'],
-          startTime: (data['startTime'] as Timestamp).toDate(),
-          endTime: (data['endTime'] as Timestamp).toDate(),
-        );
-      }).toList();
-    });
+        .map((snapshot) =>
+            snapshot.docs.map((doc) => Plan.fromMap(doc.id, doc.data())).toList());
   }
 
-  // 🔥 기록 스트림
-  Stream<List<Plan>> getRecordsStream() {
+  // ================== 기록 ==================
+  Stream<List<Record>> getRecordsStream() {
     final now = DateTime.now();
     final start = DateTime(now.year, now.month, now.day);
     final end = start.add(const Duration(days: 1));
@@ -55,52 +68,26 @@ class HomePage extends StatelessWidget {
         .where('startTime', isGreaterThanOrEqualTo: start)
         .where('startTime', isLessThan: end)
         .snapshots()
-        .map((snapshot) {
-      return snapshot.docs.map((doc) {
-        final data = doc.data();
-        return Plan(
-          id: doc.id,
-          title: data['title'],
-          startTime: (data['startTime'] as Timestamp).toDate(),
-          endTime: (data['endTime'] as Timestamp).toDate(),
-        );
-      }).toList();
-    });
+        .map((snapshot) =>
+            snapshot.docs.map((doc) => Record.fromMap(doc.id, doc.data())).toList());
   }
 
-  // 🔥 시간 겹침 체크
-  bool isOverlapping(Plan p, Plan r) {
-    return p.title == r.title &&
-        p.startTime.isBefore(r.endTime) &&
-        p.endTime.isAfter(r.startTime);
-  }
-
-  // 🔥 달성률
-  double calculateAchievement(List<Plan> plans, List<Plan> records) {
+  // ================== 달성률 ==================
+  double calculateAchievement(List<Plan> plans, List<Record> records) {
     if (plans.isEmpty) return 0;
 
     double totalPlanned = 0;
     double totalActual = 0;
 
     for (var plan in plans) {
-      final planned =
-          plan.endTime.difference(plan.startTime).inMinutes;
+      totalPlanned += plan.duration;
 
-      totalPlanned += planned;
+      final related =
+          records.where((r) => r.title == plan.title);
 
-      // 같은 제목 + 겹치는 기록만 합산
-      for (var r in records) {
-        if (isOverlapping(plan, r)) {
-          final overlapStart = r.startTime.isAfter(plan.startTime)
-              ? r.startTime
-              : plan.startTime;
-
-          final overlapEnd = r.endTime.isBefore(plan.endTime)
-              ? r.endTime
-              : plan.endTime;
-
-          totalActual += overlapEnd.difference(overlapStart).inMinutes;
-        }
+      for (var r in related) {
+        totalActual +=
+            r.endTime.difference(r.startTime).inMinutes;
       }
     }
 
@@ -109,66 +96,56 @@ class HomePage extends StatelessWidget {
     return (totalActual / totalPlanned).clamp(0, 1);
   }
 
-  String formatTime(DateTime t) {
-    return "${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}";
+  Color getColor(double ratio) {
+    if (ratio >= 0.8) return Colors.green;
+    if (ratio >= 0.5) return Colors.orange;
+    return Colors.red;
   }
 
+  String formatTime(DateTime t) =>
+      "${t.hour.toString().padLeft(2, '0')}:${t.minute.toString().padLeft(2, '0')}";
+
+  String formatDuration(Duration d) =>
+      "${d.inHours}h ${(d.inMinutes % 60)}m";
+
+  // ================== UI ==================
   @override
   Widget build(BuildContext context) {
+    final timer = context.watch<TimerState>();
+
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FB),
-        appBar: AppBar(
-          title: const Text("하루계획"),
-          bottom: PreferredSize(
-            preferredSize: const Size.fromHeight(20),
-            child: Consumer<TimerState>(
-              builder: (_, timer, __) {
-                if (!timer.isRunning) return const SizedBox();
 
-                return Container(
-                  width: double.infinity,
-                  padding: const EdgeInsets.only(bottom: 6),
+      appBar: AppBar(
+        title: const Text("하루계획"),
+
+        /// 🔥 실시간 타이머 표시 (완전 해결)
+        bottom: PreferredSize(
+          preferredSize: const Size.fromHeight(20),
+          child: timer.isRunning
+              ? Padding(
+                  padding: const EdgeInsets.only(bottom: 4),
                   child: Text(
-                    "⏱ ${timer.currentTitle} (${timer.elapsed.inMinutes}분)",
-                    textAlign: TextAlign.center,
+                    "⏱ ${timer.currentTitle} (${timer.elapsed.inSeconds}s)",
                     style: const TextStyle(fontSize: 12),
                   ),
-                );
-              },
-            ),
-          ),
+                )
+              : const SizedBox(),
         ),
+      ),
 
-      // 🔥 Drawer
       drawer: Drawer(
         child: ListView(
           children: [
-            const DrawerHeader(
-              child: Text("메뉴", style: TextStyle(fontSize: 20)),
-            ),
-            ListTile(
-              leading: const Icon(Icons.home),
-              title: const Text("홈"),
-              onTap: () => Navigator.pop(context),
-            ),
+            const DrawerHeader(child: Text("메뉴")),
             ListTile(
               leading: const Icon(Icons.calendar_month),
               title: const Text("캘린더"),
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(builder: (_) => const CalendarPage()),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.bar_chart),
-              title: const Text("주간 통계"),
-              onTap: () {
-                Navigator.push(
-                  context,
                   MaterialPageRoute(
-                      builder: (_) => const WeeklyAnalysisPage()),
+                      builder: (_) => const CalendarPage()),
                 );
               },
             ),
@@ -178,79 +155,74 @@ class HomePage extends StatelessWidget {
 
       body: StreamBuilder<List<Plan>>(
         stream: getPlansStream(),
-        builder: (context, planSnapshot) {
-          if (!planSnapshot.hasData) {
+        builder: (context, planSnap) {
+          if (!planSnap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
 
-          final plans = planSnapshot.data!;
+          final plans = planSnap.data!;
 
-          return StreamBuilder<List<Plan>>(
+          return StreamBuilder<List<Record>>(
             stream: getRecordsStream(),
-            builder: (context, recordSnapshot) {
-              if (!recordSnapshot.hasData) {
+            builder: (context, recordSnap) {
+              if (!recordSnap.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
 
-              final records = recordSnapshot.data!;
-              final achievement =
-                  calculateAchievement(plans, records);
+              final records = recordSnap.data!;
+              final ratio = calculateAchievement(plans, records);
+              final color = getColor(ratio);
 
               return Padding(
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
 
-                    // 🔥 원형 그래프 카드
-                    Container(
-                      padding: const EdgeInsets.all(20),
-                      decoration: BoxDecoration(
-                        color: Colors.white,
-                        borderRadius: BorderRadius.circular(20),
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.grey.withOpacity(0.2),
-                            blurRadius: 10,
-                            offset: const Offset(0, 5),
-                          )
-                        ],
-                      ),
-                      child: GestureDetector(
-                        onTap: () {
-                          Navigator.push(
-                            context,
-                            MaterialPageRoute(
-                              builder: (_) => AnalysisPage(
-                                plans: plans,
-                                records: records,
-                                date: DateTime.now(),
-                              ),
+                    /// ================= 달성률 =================
+                    GestureDetector(
+                      onTap: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => AnalysisPage(
+                              plans: plans,
+                              records: records,
+                              date: DateTime.now(),
                             ),
-                          );
-                        },
+                          ),
+                        );
+                      },
+                      child: Container(
+                        padding: const EdgeInsets.all(20),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(20),
+                        ),
                         child: Column(
                           children: [
-                            const Text("오늘 달성률",
-                                style: TextStyle(fontSize: 16)),
+                            const Text("오늘 달성률"),
                             const SizedBox(height: 10),
-                            Stack(
-                              alignment: Alignment.center,
-                              children: [
-                                SizedBox(
-                                  height: 140,
-                                  width: 140,
-                                  child: CircularProgressIndicator(
-                                    value: achievement,
-                                    strokeWidth: 12,
-                                  ),
-                                ),
-                                Text(
-                                  "${(achievement * 100).toStringAsFixed(1)}%",
-                                  style: const TextStyle(
-                                      fontSize: 22,
-                                      fontWeight: FontWeight.bold),
-                                ),
-                              ],
+
+                            SizedBox(
+                              height: 120,
+                              width: 120,
+                              child: CircularProgressIndicator(
+                                value: ratio,
+                                strokeWidth: 10,
+                                valueColor:
+                                    AlwaysStoppedAnimation(color),
+                              ),
+                            ),
+
+                            const SizedBox(height: 10),
+
+                            Text(
+                              "${(ratio * 100).toStringAsFixed(1)}%",
+                              style: TextStyle(
+                                fontSize: 20,
+                                fontWeight: FontWeight.bold,
+                                color: color,
+                              ),
                             ),
                           ],
                         ),
@@ -259,6 +231,7 @@ class HomePage extends StatelessWidget {
 
                     const SizedBox(height: 20),
 
+                    /// ================= 리스트 =================
                     Expanded(
                       child: ListView(
                         children: [
@@ -269,53 +242,29 @@ class HomePage extends StatelessWidget {
                           if (plans.isEmpty)
                             const Text("계획 없음"),
 
-                          ...plans.map((p) => Card(
-                                shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(16),
-                                ),
-                                elevation: 3,
-                                margin:
-                                    const EdgeInsets.only(bottom: 10),
-                                child: ListTile(
-                                  leading: const Icon(
-                                      Icons.event_note,
-                                      color: Colors.blue),
-                                  title: Text(p.title),
-                                  subtitle: Text(
-                                      "${formatTime(p.startTime)} ~ ${formatTime(p.endTime)}"),
-                                  onTap: () async {
-                                    final result =
-                                        await Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            PlanEditPage(plan: p),
-                                      ),
-                                    );
+                          ...plans.map((p) => ListTile(
+                                title: Text(p.title),
+                                subtitle: Text("${p.duration}분"),
+                                onTap: () async {
+                                  final result =
+                                      await Navigator.push(
+                                    context,
+                                    MaterialPageRoute(
+                                      builder: (_) =>
+                                          PlanEditPage(plan: p),
+                                    ),
+                                  );
 
-                                    if (result == null) return;
+                                  if (result == null) return;
 
-                                    if (result is Map &&
-                                        result["delete"] == true) {
-                                      await FirebaseFirestore.instance
-                                          .collection('plans')
-                                          .doc(result["id"])
-                                          .delete();
-                                    } else {
-                                      await FirebaseFirestore.instance
-                                          .collection('plans')
-                                          .doc(result.id)
-                                          .update({
-                                        "title": result.title,
-                                        "startTime":
-                                            result.startTime,
-                                        "endTime":
-                                            result.endTime,
-                                      });
-                                    }
-                                  },
-                                ),
+                                  if (result is Map &&
+                                      result["delete"] == true) {
+                                    await FirebaseFirestore.instance
+                                        .collection('plans')
+                                        .doc(result["id"])
+                                        .delete();
+                                  }
+                                },
                               )),
 
                           const Divider(),
@@ -326,54 +275,13 @@ class HomePage extends StatelessWidget {
                           if (records.isEmpty)
                             const Text("기록 없음"),
 
-                          ...records.map((r) => Card(
-                                shape: RoundedRectangleBorder(
-                                  borderRadius:
-                                      BorderRadius.circular(16),
-                                ),
-                                elevation: 3,
-                                margin:
-                                    const EdgeInsets.only(bottom: 10),
-                                child: ListTile(
-                                  leading: const Icon(
-                                      Icons.check_circle,
-                                      color: Colors.green),
-                                  title: Text(r.title),
-                                  subtitle: Text(
-                                      "${formatTime(r.startTime)} ~ ${formatTime(r.endTime)}"),
-                                  onTap: () async {
-                                    final result =
-                                        await Navigator.push(
-                                      context,
-                                      MaterialPageRoute(
-                                        builder: (_) =>
-                                            RecordEditPage(
-                                                record: r),
-                                      ),
-                                    );
-
-                                    if (result == null) return;
-
-                                    if (result is Map &&
-                                        result["delete"] == true) {
-                                      await FirebaseFirestore.instance
-                                          .collection('records')
-                                          .doc(result["id"])
-                                          .delete();
-                                    } else {
-                                      await FirebaseFirestore.instance
-                                          .collection('records')
-                                          .doc(result.id)
-                                          .update({
-                                        "title": result.title,
-                                        "startTime":
-                                            result.startTime,
-                                        "endTime":
-                                            result.endTime,
-                                      });
-                                    }
-                                  },
-                                ),
+                          ...records.map((r) => ListTile(
+                                title: Text(r.title),
+                                subtitle: Text(
+                                    "${formatTime(r.startTime)} ~ ${formatTime(r.endTime)}"),
+                                trailing: Text(formatDuration(
+                                    r.endTime
+                                        .difference(r.startTime))),
                               )),
                         ],
                       ),
@@ -386,6 +294,7 @@ class HomePage extends StatelessWidget {
         },
       ),
 
+      /// ================= FAB =================
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
@@ -414,7 +323,7 @@ class HomePage extends StatelessWidget {
                 ),
               );
             },
-            child: const Icon(Icons.edit),
+            child: const Icon(Icons.play_arrow),
           ),
         ],
       ),
