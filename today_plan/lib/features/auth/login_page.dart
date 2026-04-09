@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../data/services/auth_service.dart';
 import 'signup_page.dart';
+import '../home/home_page.dart';
 
 class LoginPage extends StatefulWidget {
   const LoginPage({super.key});
@@ -29,8 +30,15 @@ class _LoginPageState extends State<LoginPage> {
       );
 
       if (user != null) {
+        if (!mounted) return;
+
         ScaffoldMessenger.of(context).showSnackBar(
           const SnackBar(content: Text("로그인 성공 🎉")),
+        );
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(builder: (_) => const HomePage()),
         );
       }
     } catch (e) {

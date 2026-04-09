@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 import 'package:flutter_background_service/flutter_background_service.dart';
 
 import '../../data/services/timer_state.dart';
@@ -15,6 +16,9 @@ import '../calendar/calendar_page.dart';
 import '../plan/plan_edit_page.dart';
 import '../record/record_edit_page.dart';
 
+import '../auth/login_page.dart';
+import '../../core/background_timer_service.dart';
+
 class HomePage extends StatefulWidget {
   const HomePage({super.key});
 
@@ -23,28 +27,23 @@ class HomePage extends StatefulWidget {
 }
 
 class _HomePageState extends State<HomePage> {
-  final service = FlutterBackgroundService();
+  String? userId;
 
-  String get userId => FirebaseAuth.instance.currentUser!.uid;
-
-  // ================== INIT ==================
   @override
   void initState() {
     super.initState();
+    _loadUser();
+  }
 
-    final timer = context.read<TimerState>();
-
-    /// 🔥 백그라운드 → UI 연결
-    service.on('update').listen((event) {
-      if (event != null) {
-        final seconds = event["seconds"];
-        timer.updateFromBackground(seconds);
-      }
+  Future<void> _loadUser() async {
+    final prefs = await SharedPreferences.getInstance();
+    setState(() {
+      userId = prefs.getString('userId');
     });
   }
 
-  // ================== 계획 ==================
   Stream<List<Plan>> getPlansStream() {
+    if (userId == null) return const Stream.empty();
     final today = DateTime.now().toIso8601String().substring(0, 10);
 
     return FirebaseFirestore.instance
@@ -56,8 +55,8 @@ class _HomePageState extends State<HomePage> {
             snapshot.docs.map((doc) => Plan.fromMap(doc.id, doc.data())).toList());
   }
 
-  // ================== 기록 ==================
   Stream<List<Record>> getRecordsStream() {
+    if (userId == null) return const Stream.empty();
     final now = DateTime.now();
     final start = DateTime(now.year, now.month, now.day);
     final end = start.add(const Duration(days: 1));
@@ -72,27 +71,20 @@ class _HomePageState extends State<HomePage> {
             snapshot.docs.map((doc) => Record.fromMap(doc.id, doc.data())).toList());
   }
 
-  // ================== 달성률 ==================
   double calculateAchievement(List<Plan> plans, List<Record> records) {
     if (plans.isEmpty) return 0;
-
     double totalPlanned = 0;
     double totalActual = 0;
 
     for (var plan in plans) {
       totalPlanned += plan.duration;
-
-      final related =
-          records.where((r) => r.title == plan.title);
-
+      final related = records.where((r) => r.title == plan.title);
       for (var r in related) {
-        totalActual +=
-            r.endTime.difference(r.startTime).inMinutes;
+        totalActual += r.endTime.difference(r.startTime).inMinutes;
       }
     }
 
     if (totalPlanned == 0) return 0;
-
     return (totalActual / totalPlanned).clamp(0, 1);
   }
 
@@ -108,18 +100,39 @@ class _HomePageState extends State<HomePage> {
   String formatDuration(Duration d) =>
       "${d.inHours}h ${(d.inMinutes % 60)}m";
 
-  // ================== UI ==================
+  Future<void> _onLogout() async {
+    // 타이머 중지
+    BackgroundTimerService.stop();
+
+    await FirebaseAuth.instance.signOut();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.clear();
+
+    // 로그인 페이지 이동
+    if (!mounted) return;
+    Navigator.pushReplacement(
+      context,
+      MaterialPageRoute(builder: (_) => const LoginPage()),
+    );
+  }
+
+  Future<void> _onSave() async {
+    // 타이머 초기화
+    BackgroundTimerService.stop();
+
+    setState(() {
+      // UI 상태 초기화 필요 시 추가
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final timer = context.watch<TimerState>();
 
     return Scaffold(
       backgroundColor: const Color(0xFFF5F7FB),
-
       appBar: AppBar(
         title: const Text("하루계획"),
-
-        /// 🔥 실시간 타이머 표시 (완전 해결)
         bottom: PreferredSize(
           preferredSize: const Size.fromHeight(20),
           child: timer.isRunning
@@ -133,7 +146,6 @@ class _HomePageState extends State<HomePage> {
               : const SizedBox(),
         ),
       ),
-
       drawer: Drawer(
         child: ListView(
           children: [
@@ -144,31 +156,31 @@ class _HomePageState extends State<HomePage> {
               onTap: () {
                 Navigator.push(
                   context,
-                  MaterialPageRoute(
-                      builder: (_) => const CalendarPage()),
+                  MaterialPageRoute(builder: (_) => const CalendarPage()),
                 );
               },
+            ),
+            ListTile(
+              leading: const Icon(Icons.logout),
+              title: const Text("로그아웃"),
+              onTap: _onLogout,
             ),
           ],
         ),
       ),
-
       body: StreamBuilder<List<Plan>>(
         stream: getPlansStream(),
         builder: (context, planSnap) {
           if (!planSnap.hasData) {
             return const Center(child: CircularProgressIndicator());
           }
-
           final plans = planSnap.data!;
-
           return StreamBuilder<List<Record>>(
             stream: getRecordsStream(),
             builder: (context, recordSnap) {
               if (!recordSnap.hasData) {
                 return const Center(child: CircularProgressIndicator());
               }
-
               final records = recordSnap.data!;
               final ratio = calculateAchievement(plans, records);
               final color = getColor(ratio);
@@ -177,8 +189,7 @@ class _HomePageState extends State<HomePage> {
                 padding: const EdgeInsets.all(16),
                 child: Column(
                   children: [
-
-                    /// ================= 달성률 =================
+                    // 오늘 달성률
                     GestureDetector(
                       onTap: () {
                         Navigator.push(
@@ -202,20 +213,16 @@ class _HomePageState extends State<HomePage> {
                           children: [
                             const Text("오늘 달성률"),
                             const SizedBox(height: 10),
-
                             SizedBox(
                               height: 120,
                               width: 120,
                               child: CircularProgressIndicator(
                                 value: ratio,
                                 strokeWidth: 10,
-                                valueColor:
-                                    AlwaysStoppedAnimation(color),
+                                valueColor: AlwaysStoppedAnimation(color),
                               ),
                             ),
-
                             const SizedBox(height: 10),
-
                             Text(
                               "${(ratio * 100).toStringAsFixed(1)}%",
                               style: TextStyle(
@@ -228,37 +235,25 @@ class _HomePageState extends State<HomePage> {
                         ),
                       ),
                     ),
-
                     const SizedBox(height: 20),
-
-                    /// ================= 리스트 =================
+                    // 리스트
                     Expanded(
                       child: ListView(
                         children: [
-
-                          const Text("📌 계획",
-                              style: TextStyle(fontSize: 18)),
-
-                          if (plans.isEmpty)
-                            const Text("계획 없음"),
-
+                          const Text("📌 계획", style: TextStyle(fontSize: 18)),
+                          if (plans.isEmpty) const Text("계획 없음"),
                           ...plans.map((p) => ListTile(
                                 title: Text(p.title),
                                 subtitle: Text("${p.duration}분"),
                                 onTap: () async {
-                                  final result =
-                                      await Navigator.push(
+                                  final result = await Navigator.push(
                                     context,
                                     MaterialPageRoute(
-                                      builder: (_) =>
-                                          PlanEditPage(plan: p),
+                                      builder: (_) => PlanEditPage(plan: p),
                                     ),
                                   );
-
                                   if (result == null) return;
-
-                                  if (result is Map &&
-                                      result["delete"] == true) {
+                                  if (result is Map && result["delete"] == true) {
                                     await FirebaseFirestore.instance
                                         .collection('plans')
                                         .doc(result["id"])
@@ -266,22 +261,15 @@ class _HomePageState extends State<HomePage> {
                                   }
                                 },
                               )),
-
                           const Divider(),
-
-                          const Text("📝 기록",
-                              style: TextStyle(fontSize: 18)),
-
-                          if (records.isEmpty)
-                            const Text("기록 없음"),
-
+                          const Text("📝 기록", style: TextStyle(fontSize: 18)),
+                          if (records.isEmpty) const Text("기록 없음"),
                           ...records.map((r) => ListTile(
                                 title: Text(r.title),
                                 subtitle: Text(
                                     "${formatTime(r.startTime)} ~ ${formatTime(r.endTime)}"),
                                 trailing: Text(formatDuration(
-                                    r.endTime
-                                        .difference(r.startTime))),
+                                    r.endTime.difference(r.startTime))),
                               )),
                         ],
                       ),
@@ -293,8 +281,6 @@ class _HomePageState extends State<HomePage> {
           );
         },
       ),
-
-      /// ================= FAB =================
       floatingActionButton: Column(
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
@@ -303,8 +289,7 @@ class _HomePageState extends State<HomePage> {
             onPressed: () {
               Navigator.push(
                 context,
-                MaterialPageRoute(
-                    builder: (_) => const PlanCreatePage()),
+                MaterialPageRoute(builder: (_) => const PlanCreatePage()),
               );
             },
             child: const Icon(Icons.add),
@@ -314,12 +299,10 @@ class _HomePageState extends State<HomePage> {
             heroTag: "record",
             onPressed: () async {
               final plans = await getPlansStream().first;
-
               Navigator.push(
                 context,
                 MaterialPageRoute(
-                  builder: (_) =>
-                      RecordCreatePage(plans: plans),
+                  builder: (_) => RecordCreatePage(plans: plans),
                 ),
               );
             },
